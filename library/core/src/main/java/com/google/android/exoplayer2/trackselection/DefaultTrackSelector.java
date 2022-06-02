@@ -27,6 +27,7 @@ import android.util.Pair;
 import android.util.SparseArray;
 import android.util.SparseBooleanArray;
 import androidx.annotation.IntDef;
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.Bundleable;
 import com.google.android.exoplayer2.C;
@@ -1743,22 +1744,28 @@ public class DefaultTrackSelector extends MappingTrackSelector {
       definitions[selectedVideo.second] = selectedVideo.first;
     }
 
-    @Nullable
-    Pair<ExoTrackSelection.Definition, Integer> selectedAudio =
+    @NonNull
+    List<Pair<ExoTrackSelection.Definition, Integer>> selectedAudios =
         selectAudioTrack(
             mappedTrackInfo,
             rendererFormatSupports,
             rendererMixedMimeTypeAdaptationSupports,
             params);
-    if (selectedAudio != null) {
+    for (Pair<ExoTrackSelection.Definition, Integer> selectedAudio : selectedAudios) {
       definitions[selectedAudio.second] = selectedAudio.first;
     }
 
     @Nullable
+    Pair<ExoTrackSelection.Definition, Integer> firstSelectedAudio = null;
+    if (!selectedAudios.isEmpty()) {
+      firstSelectedAudio = selectedAudios.get(0);
+    }
+
+    @Nullable
     String selectedAudioLanguage =
-        selectedAudio == null
+        firstSelectedAudio == null
             ? null
-            : selectedAudio.first.group.getFormat(selectedAudio.first.tracks[0]).language;
+            : firstSelectedAudio.first.group.getFormat(firstSelectedAudio.first.tracks[0]).language;
     @Nullable
     Pair<ExoTrackSelection.Definition, Integer> selectedText =
         selectTextTrack(mappedTrackInfo, rendererFormatSupports, params, selectedAudioLanguage);
@@ -1826,13 +1833,13 @@ public class DefaultTrackSelector extends MappingTrackSelector {
    * @param rendererMixedMimeTypeAdaptationSupports The {@link AdaptiveSupport} for mixed MIME type
    *     adaptation for the renderer.
    * @param params The selector's current constraint parameters.
-   * @return A pair of the selected {@link ExoTrackSelection.Definition} and the corresponding
-   *     renderer index, or null if no selection was made.
+   * @return A list of pair of the selected {@link ExoTrackSelection.Definition} and the corresponding
+   *     renderer index, or an empty list if no selection was made.
    * @throws ExoPlaybackException If an error occurs while selecting the tracks.
    */
   @SuppressLint("WrongConstant") // Lint doesn't understand arrays of IntDefs.
-  @Nullable
-  protected Pair<ExoTrackSelection.Definition, Integer> selectAudioTrack(
+  @NonNull
+  protected List<Pair<ExoTrackSelection.Definition, Integer>> selectAudioTrack(
       MappedTrackInfo mappedTrackInfo,
       @Capabilities int[][][] rendererFormatSupports,
       @AdaptiveSupport int[] rendererMixedMimeTypeAdaptationSupports,
@@ -1847,8 +1854,7 @@ public class DefaultTrackSelector extends MappingTrackSelector {
       }
     }
     boolean hasVideoRendererWithMappedTracksFinal = hasVideoRendererWithMappedTracks;
-    return selectTracksForType(
-        C.TRACK_TYPE_AUDIO,
+    return selectTracksForAudio(
         mappedTrackInfo,
         rendererFormatSupports,
         (rendererIndex, group, support) ->
@@ -1931,6 +1937,58 @@ public class DefaultTrackSelector extends MappingTrackSelector {
     return selectedGroup == null
         ? null
         : new ExoTrackSelection.Definition(selectedGroup, selectedTrackIndex);
+  }
+
+  @NonNull
+  private <T extends TrackInfo<T>> List<Pair<ExoTrackSelection.Definition, Integer>> selectTracksForAudio(
+      MappedTrackInfo mappedTrackInfo,
+      @Capabilities int[][][] formatSupport,
+      TrackInfo.Factory<T> trackInfoFactory,
+      Comparator<List<T>> selectionComparator) {
+    List<Pair<ExoTrackSelection.Definition, Integer>> pairs = new ArrayList<>();
+    int rendererCount = mappedTrackInfo.getRendererCount();
+    for (int rendererIndex = 0; rendererIndex < rendererCount; rendererIndex++) {
+      if (C.TRACK_TYPE_AUDIO == mappedTrackInfo.getRendererType(rendererIndex)) {
+        TrackGroupArray groups = mappedTrackInfo.getTrackGroups(rendererIndex);
+        for (int groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+          TrackGroup trackGroup = groups.get(groupIndex);
+          @RendererCapabilities.Capabilities int[] groupSupport = formatSupport[rendererIndex][groupIndex];
+          List<T> trackInfos = trackInfoFactory.create(rendererIndex, trackGroup, groupSupport);
+          boolean[] usedTrackInSelection = new boolean[trackGroup.length];
+          for (int trackIndex = 0; trackIndex < trackGroup.length; trackIndex++) {
+            T trackInfo = trackInfos.get(trackIndex);
+            @SelectionEligibility int eligibility = trackInfo.getSelectionEligibility();
+            if (usedTrackInSelection[trackIndex] || eligibility == SELECTION_ELIGIBILITY_NO) {
+              continue;
+            }
+            List<T> selection;
+            if (eligibility == SELECTION_ELIGIBILITY_FIXED) {
+              selection = ImmutableList.of(trackInfo);
+            } else {
+              selection = new ArrayList<>();
+              selection.add(trackInfo);
+              for (int i = trackIndex + 1; i < trackGroup.length; i++) {
+                T otherTrackInfo = trackInfos.get(i);
+                if (otherTrackInfo.getSelectionEligibility() == SELECTION_ELIGIBILITY_ADAPTIVE) {
+                  if (trackInfo.isCompatibleForAdaptationWith(otherTrackInfo)) {
+                    selection.add(otherTrackInfo);
+                    usedTrackInSelection[i] = true;
+                  }
+                }
+              }
+            }
+            int[] trackIndices = new int[selection.size()];
+            for (int i = 0; i < selection.size(); i++) {
+              trackIndices[i] = selection.get(i).trackIndex;
+            }
+            ExoTrackSelection.Definition definition = new ExoTrackSelection.Definition(trackInfo.trackGroup,
+                trackIndices);
+            pairs.add(Pair.create(definition, trackInfo.rendererIndex));
+          }
+        }
+      }
+    }
+    return pairs;
   }
 
   @Nullable

@@ -418,6 +418,9 @@ public interface AudioSink {
   /** Sets the audio session id. */
   void setAudioSessionId(int audioSessionId);
 
+  /** Gets the audio session id. */
+  int getAudioSessionId();
+
   /** Sets the auxiliary effect. */
   void setAuxEffectInfo(AuxEffectInfo auxEffectInfo);
 
@@ -442,6 +445,8 @@ public interface AudioSink {
    * @param volume Linear output gain to apply to all channels. Should be in the range [0.0, 1.0].
    */
   void setVolume(float volume);
+
+  float getVolume();
 
   /** Pauses playback. */
   void pause();

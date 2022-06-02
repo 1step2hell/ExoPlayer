@@ -370,8 +370,9 @@ public abstract class MappingTrackSelector extends TrackSelector {
     for (int groupIndex = 0; groupIndex < trackGroups.length; groupIndex++) {
       TrackGroup group = trackGroups.get(groupIndex);
       // Associate the group to a preferred renderer.
+      @C.TrackType int trackType = MimeTypes.getTrackType(group.getFormat(0).sampleMimeType);
       boolean preferUnassociatedRenderer =
-          MimeTypes.getTrackType(group.getFormat(0).sampleMimeType) == C.TRACK_TYPE_METADATA;
+          trackType == C.TRACK_TYPE_METADATA || trackType == C.TRACK_TYPE_AUDIO;
       int rendererIndex =
           findRenderer(
               rendererCapabilities, group, rendererTrackGroupCounts, preferUnassociatedRenderer);

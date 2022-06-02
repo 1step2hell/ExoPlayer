@@ -1328,6 +1328,11 @@ public final class DefaultAudioSink implements AudioSink {
   }
 
   @Override
+  public int getAudioSessionId() {
+    return audioSessionId;
+  }
+
+  @Override
   public void setAuxEffectInfo(AuxEffectInfo auxEffectInfo) {
     if (this.auxEffectInfo.equals(auxEffectInfo)) {
       return;
@@ -1379,6 +1384,11 @@ public final class DefaultAudioSink implements AudioSink {
     } else {
       setVolumeInternalV3(audioTrack, volume);
     }
+  }
+
+  @Override
+  public float getVolume(){
+    return volume;
   }
 
   @Override
